@@ -1,0 +1,40 @@
+#!/bin/sh
+
+# this safely appends the output of a command to a file.  this is done by first
+# redirecting the output to a temporary file, obtaining a lock to write to the
+# file, appending the temporary file and then removing the temporary and lock
+# file.
+#
+# both stdout and stderr are redirected and appended.  the file being appended
+# to need not exist beforehand.
+#
+# if this script is interrupted, the temporary file and/or lock file are left
+# behind (depending on when the interruption happens)
+
+if [ $# -lt 2 ]; then
+  echo "safeappend appendfile command [args]"
+  exit 1
+fi
+
+outfile="$1"
+shift
+tmpfile=`mktemp "${outfile}.XXXXXX"`
+${1+"$@"} >> "$tmpfile" 2>&1
+rv=$?
+
+while [ 1 ]; do
+  makelock "${outfile}.lock"
+  rv=$?
+  if [ $rv -eq 0 ]; then
+    # success
+    break
+  fi
+  if [ $rv -ne 1 ]; then
+    echo "couldn't get a lock on ${outfile} err=$rv"
+    exit 3
+  fi
+  sleep 1
+done
+cat "$tmpfile" >> "$outfile"
+rm -f "$tmpfile" "${outfile}.lock"
+exit $rv
